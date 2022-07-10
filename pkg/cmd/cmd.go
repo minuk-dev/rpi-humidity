@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/minuk-dev/rpi-humidity/pkg/dht"
 	"github.com/spf13/cobra"
 )
 
@@ -28,5 +29,17 @@ func NewRPIHumidityCommand(o RPIHumidityOptions) *cobra.Command {
 }
 
 func runRPIHumidity(cmd *cobra.Command, args []string) {
+	sensor := dht.New(dht.DHTOptions{
+		Pin:  4,
+		Type: dht.DHT22,
+	})
+	for {
+		temperature, humidity, err := sensor.ReadRetry(15)
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Println(temperature, humidity)
+	}
+
 	fmt.Println("Not Implemented")
 }
