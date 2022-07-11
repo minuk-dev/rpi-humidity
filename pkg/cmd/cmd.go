@@ -29,7 +29,7 @@ func NewRPIHumidityCommand(o RPIHumidityOptions) *cobra.Command {
 }
 
 func runRPIHumidity(cmd *cobra.Command, args []string) {
-	sensor := dht.New(dht.DHTOptions{
+	sensor := dht.New(dht.DHTConfig{
 		Pin:  4,
 		Type: dht.DHT22,
 	})
@@ -40,6 +40,4 @@ func runRPIHumidity(cmd *cobra.Command, args []string) {
 		}
 		fmt.Println(temperature, humidity)
 	}
-
-	fmt.Println("Not Implemented")
 }

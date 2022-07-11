@@ -4,7 +4,6 @@ go 1.17
 
 require (
 	github.com/kidoman/embd v0.0.0-20170508013040-d3d8c0c5c68d
-	github.com/morus12/dht22 v0.0.0-20170211005327-87805f7fca72
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.5.0
 )

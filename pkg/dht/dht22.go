@@ -1,42 +1,30 @@
+// dht22.go provides data structures and methods
+// for control to dht22 sensor.
 package dht
 
 import (
+	"encoding/binary"
+	"strconv"
 	"time"
 
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/rpi"
 )
 
-type dht22Sensor struct {
-	pin embd.DigitalPin
-	o   dht22Options
-}
-
-type dht22Options struct {
-	Pin int
-}
-
-func newDefaultDHT22Sensor(pin int) *dht22Sensor {
-	return newDHT22Sensor(dht22Options{
-		Pin: pin,
-	})
-}
-
-func newDHT22Sensor(o dht22Options) *dht22Sensor {
-	return &dht22Sensor{
-		pin: nil,
-	}
-}
-
-const (
-	DHT_PULSES   = 41
-	DHT_MAXCOUNT = 32000
-)
-
+// TryRead() cannot be sure to get sensor values.
+// In many cases, dht22 sensor cannot be readable
+// due to uncertain reason.
+// So, many other libraries, in other languages,
+// try to get for many times.
 func (d *dht22Sensor) TryRead() (float32, float32, error) {
 	return d.read()
 }
 
+// ReadRetry() provides more stable interface to get the values
+// of sensor using automatically retrying.
+// The recommended maxRetry's value is 15.
+// Each trial be delayed in 2 seconds to improve probabilities.
+// And each trial also opens and closes every time.
 func (d *dht22Sensor) ReadRetry(maxRetry int) (float32, float32, error) {
 	temperature, humidity, err := d.readRetry(maxRetry, 2)
 	if err != nil {
@@ -45,16 +33,52 @@ func (d *dht22Sensor) ReadRetry(maxRetry int) (float32, float32, error) {
 	return temperature, humidity, nil
 }
 
+// Internal data structures.
+// DHT22 Sensor only needs pin number option.
+// kidoman/embd library uses a string parameter to control GPIO
+// For example,
+// pin, err := embd.NewDigitalPin("GPIO_4")
+// Therefore, eventually the pin number must be tranformed
+// to string.
+// So the pin number is a configuration not to change.
+type dht22Config struct {
+	Pin int
+}
+
+type dht22Sensor struct {
+	pin embd.DigitalPin
+	c   dht22Config
+}
+
+// These values are based on Adafruit python library.
+const (
+	DHT_PULSES   = 41
+	DHT_MAXCOUNT = 32000
+)
+
+func (d *dht22Sensor) readRetry(retryCnt, delay int) (float32, float32, error) {
+	var temperature, humidity float32
+	var err error
+	for i := 0; i < retryCnt; i++ {
+		temperature, humidity, err = d.read()
+		if err == nil {
+			return temperature, humidity, nil
+		}
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
+	return 0, 0, err
+}
+
+// TODO: refactor code
 func (d *dht22Sensor) read() (float32, float32, error) {
 	err := d.open()
 	if err != nil {
 		return 0, 0, err
 	}
 	defer d.close()
-	// early allocations before time critical code
+
 	pulseCounts := make([]int, DHT_PULSES*2)
 
-	// Wait pulse start
 	for {
 		v, err := d.pin.Read()
 		if err != nil {
@@ -100,7 +124,6 @@ func (d *dht22Sensor) read() (float32, float32, error) {
 	}
 	threshold /= DHT_PULSES - 1
 
-	// convert to bytes
 	bytes := make([]uint8, 5)
 
 	for i := 3; i < DHT_PULSES*2; i += 2 {
@@ -115,35 +138,21 @@ func (d *dht22Sensor) read() (float32, float32, error) {
 		return 0, 0, err
 	}
 
-	// calculate humidity
 	temperature :=
-		float32(convertBytesToUint16(bytes[0:2], true)) / 10
+		float32(int16(binary.BigEndian.Uint16(bytes[0:2]))) / 10
 	humidity :=
-		float32(convertBytesToUint16(bytes[2:4], true)) / 10
+		float32(int16(binary.BigEndian.Uint16(bytes[2:4]))) / 10
 
-	if !isValidHumidity(humidity) {
+	if !ValidateHumidity(humidity) {
 		return 0, 0, HumidityError
 	}
 
 	// datasheet operating range
-	if !isValidTemperature(temperature) {
+	if !ValidateTemperature(temperature) {
 		return 0, 0, TemperatureError
 	}
 
 	return temperature, humidity, nil
-}
-
-func (d *dht22Sensor) readRetry(retryCnt, delay int) (float32, float32, error) {
-	var temperature, humidity float32
-	var err error
-	for i := 0; i < retryCnt; i++ {
-		temperature, humidity, err = d.read()
-		if err == nil {
-			return temperature, humidity, nil
-		}
-		time.Sleep(time.Duration(delay) * time.Second)
-	}
-	return 0, 0, err
 }
 
 func (d *dht22Sensor) open() error {
@@ -152,7 +161,8 @@ func (d *dht22Sensor) open() error {
 		return err
 	}
 
-	d.pin, err = embd.NewDigitalPin("GPIO_4")
+	gpioStr := "GPIO_" + strconv.Itoa(d.c.Pin)
+	d.pin, err = embd.NewDigitalPin(gpioStr)
 	if err != nil {
 		return err
 	}
@@ -162,7 +172,6 @@ func (d *dht22Sensor) open() error {
 		return err
 	}
 
-	// send init values
 	err = d.pin.Write(embd.High)
 	if err != nil {
 		return err
@@ -179,7 +188,6 @@ func (d *dht22Sensor) open() error {
 	if err != nil {
 		return err
 	}
-
 	time.Sleep(20 * time.Microsecond)
 
 	err = d.pin.SetDirection(embd.In)
@@ -195,6 +203,7 @@ func (d *dht22Sensor) close() error {
 	if err != nil {
 		return err
 	}
+
 	err = embd.CloseGPIO()
 	if err != nil {
 		return err
@@ -204,7 +213,7 @@ func (d *dht22Sensor) close() error {
 }
 
 func (d *dht22Sensor) checksum(bytes []uint8) error {
-	var sum uint8
+	sum := uint8(0)
 
 	for i := 0; i < 4; i++ {
 		sum += bytes[i]
@@ -215,4 +224,17 @@ func (d *dht22Sensor) checksum(bytes []uint8) error {
 	}
 
 	return nil
+}
+
+func newDefaultDHT22Sensor(pin int) *dht22Sensor {
+	return newDHT22Sensor(dht22Config{
+		Pin: pin,
+	})
+}
+
+func newDHT22Sensor(c dht22Config) *dht22Sensor {
+	return &dht22Sensor{
+		pin: nil,
+		c:   c,
+	}
 }
