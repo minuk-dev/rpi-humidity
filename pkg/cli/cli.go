@@ -1,11 +1,14 @@
 package cli
 
 import (
-	"errors"
-
 	"github.com/spf13/cobra"
 )
 
 func RunNoErrorOutput(cmd *cobra.Command) error {
-	return errors.New("Not Implemented")
+	err := cmd.Execute()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
