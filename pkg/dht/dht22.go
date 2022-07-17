@@ -138,9 +138,9 @@ func (d *dht22Sensor) read() (float32, float32, error) {
 		return 0, 0, err
 	}
 
-	temperature :=
-		float32(int16(binary.BigEndian.Uint16(bytes[0:2]))) / 10
 	humidity :=
+		float32(int16(binary.BigEndian.Uint16(bytes[0:2]))) / 10
+	temperature :=
 		float32(int16(binary.BigEndian.Uint16(bytes[2:4]))) / 10
 
 	if !ValidateHumidity(humidity) {
